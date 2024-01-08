@@ -72,14 +72,27 @@ class RecMixin(object):
 
         return predictions_top_k_val, predictions_top_k_test
 
-    def process_protocol(self, k, *args):
+    def process_protocol(self, k, predictions, offset, offset_stop):  #, *args):
 
         if not self._negative_sampling:
-            recs = self.get_single_recommendation(self.get_candidate_mask(), k, *args)
-            return recs, recs
+            #recs = self.get_single_recommendation(self.get_candidate_mask(), k, *args)
+            #Hack since 99.99% are unobserved, just white list 100%, and do the join to true observed connections offline.
+            #print(offset_stop-offset)
+            #print(self._num_items)
+            white_mask=np.ones((offset_stop-offset, self._num_items), dtype=bool)
+            recs = self.get_single_recommendation_hack(white_mask, k,  predictions, offset, offset_stop ) # *args)
+            return recs, recs #{},{}
         else:
-            return self.get_single_recommendation(self.get_candidate_mask(validation=True), k, *args) if hasattr(self._data, "val_dict") else {}, \
-                   self.get_single_recommendation(self.get_candidate_mask(), k, *args)
+            return self.get_single_recommendation(self.get_candidate_mask(validation=True), k, predictions,  offset, offset_stop) if hasattr(self._data, "val_dict") else {}, \
+                   self.get_single_recommendation(self.get_candidate_mask(), k, predictions, offset, offset_stop)
+
+
+    def get_single_recommendation_hack(self, white_mask, k, predictions, offset, offset_stop):
+        v, i = self._model.get_top_k(predictions,white_mask, k=k) #Returns value , index tensors
+        items_ratings_pair = [list(zip(map(self._data.private_items.get, u_list[0]), u_list[1])) for u_list in list(zip(i.detach().cpu().numpy(), v.detach().cpu().numpy()))]
+        return dict(zip(map(self._data.private_users.get, range(offset, offset_stop)), items_ratings_pair))
+
+
 
     def get_single_recommendation(self, mask, k, predictions, offset, offset_stop):
         v, i = self._model.get_top_k(predictions, mask[offset: offset_stop], k=k)

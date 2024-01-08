@@ -14,10 +14,10 @@ for _backend in sys.modules["external"].backend:
     elif _backend == "pytorch":
         from .ngcf.NGCF import NGCF
         from .lightgcn.LightGCN import LightGCN
+        from .lightgcnweighted import LightGCNWeighted
         from .lightgcn_norepr.LightGCNNoRepr import LightGCNNoRepr
         from .dgcf.DGCF import DGCF
         from .sgl.SGL import SGL
         from .ultragcn import UltraGCN
         from .gfcf import GFCF
         from .sgl import SGL
-        from .simgcl import SimGCL

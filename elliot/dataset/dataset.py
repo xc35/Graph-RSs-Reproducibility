@@ -16,7 +16,8 @@ import pandas as pd
 import scipy.sparse as sp
 import typing as t
 import logging as pylog
-
+import psutil
+from psutil._common import bytes2human
 from elliot.dataset.abstract_dataset import AbstractDataset
 from elliot.splitter.base_splitter import Splitter
 from elliot.prefiltering.standard_prefilters import PreFilter
@@ -220,19 +221,15 @@ class DataSet(AbstractDataset):
         self.public_users = {v: k for k, v in self.private_users.items()}
         self.private_items = {p: i for p, i in enumerate(self.items)}
         self.public_items = {v: k for k, v in self.private_items.items()}
-
+        #FIXME: Check memory footprint of i_train_dict: sys.getsizeof(i_train_dict)
         self.i_train_dict = {self.public_users[user]: {self.public_items[i]: v for i, v in items.items()}
                              for user, items in self.train_dict.items()}
 
-        self.edge_index = data_tuple[0]
-        self.edge_index['userId'] = self.edge_index['userId'].map(self.public_users)
-        self.edge_index['itemId'] = self.edge_index['itemId'].map(self.public_items)
-
         self.sp_i_train = self.build_sparse()
         self.sp_i_train_ratings = self.build_sparse_ratings()
-
         if len(data_tuple) == 2:
             self.test_dict = self.build_dict(data_tuple[1], self.users)
+            print('Before negative_sampling ', self.memory_available())
             if hasattr(config, "negative_sampling"):
                 _, test_neg_samples, selected_items = NegativeSampler.sample(config, self.public_users, self.public_items,
                                                                              self.private_users, self.private_items,
@@ -242,6 +239,7 @@ class DataSet(AbstractDataset):
                 # self.test_mask = np.where((test_candidate_items.toarray() == True), True, False)
                 self.test_negative_dict = test_neg_samples
                 self.selected_items = selected_items
+            print('After negative_sampling ', self.memory_available())
         else:
             self.val_dict = self.build_dict(data_tuple[1], self.users)
             self.test_dict = self.build_dict(data_tuple[2], self.users)
@@ -259,8 +257,17 @@ class DataSet(AbstractDataset):
                 self.val_negative_dict = val_neg_samples
                 self.test_negative_dict = test_neg_samples
                 self.selected_items = selected_items
+        #print('Before allunrated_mask ', self.memory_available())
+        #self.allunrated_mask = np.where((self.sp_i_train.toarray() == 0), True, False) #Dense matrix
+        #print('After allunrated_mask ', self.memory_available())
 
-        self.allunrated_mask = np.where((self.sp_i_train.toarray() == 0), True, False)
+    def memory_available(self):
+        # Get total physical memory expressed in bytes
+        #total_phy_memory = psutil.virtual_memory().total
+        # Convert to a more readable format
+        #total_phy_memory_GB = bytes2human(total_phy_memory)
+        # Return total physical memory expressed in gigabytes
+        return psutil.virtual_memory().available * 100 / psutil.virtual_memory().total
 
     def build_items_neighbour(self):
         row, col = self.sp_i_train.nonzero()
@@ -281,6 +288,7 @@ class DataSet(AbstractDataset):
         return ratings
 
     def build_dict(self, dataframe, users):
+        # Rating is set to 1.
         ratings = dataframe.set_index('userId')[['itemId', 'rating']].apply(lambda x: (x['itemId'], float(x['rating'])), 1)\
             .groupby(level=0).agg(lambda x: dict(x.values)).to_dict()
         # for u in users:
@@ -289,7 +297,7 @@ class DataSet(AbstractDataset):
         return ratings
 
     def build_sparse(self):
-
+        # Rating is set to 1.
         rows_cols = [(u, i) for u, items in self.i_train_dict.items() for i in items.keys()]
         rows = [u for u, _ in rows_cols]
         cols = [i for _, i in rows_cols]
