@@ -138,6 +138,14 @@ class LightGCNWeighted(RecMixin, BaseRecommenderModel):
 
     def evaluate(self, it=None, loss=0):
         if (it is None) or (not (it + 1) % self._validation_rate):
+            if self._save_weights:
+                if hasattr(self, "_model"):
+                    torch.save({
+                        'model_state_dict': self._model.state_dict(),
+                        'optimizer_state_dict': self._model.optimizer.state_dict()
+                    }, self._saving_filepath)
+                else:
+                    self.logger.warning("Saving weights FAILED. No model to save.")
             recs = self.get_recommendations(self.evaluator.get_needed_recommendations())
             result_dict = self.evaluator.eval(recs)
 
@@ -164,14 +172,7 @@ class LightGCNWeighted(RecMixin, BaseRecommenderModel):
                     self._params.best_iteration = it + 1
                 self.logger.info("******************************************")
                 self.best_metric_value = self._results[-1][self._validation_k]["val_results"][self._validation_metric]
-                if self._save_weights:
-                    if hasattr(self, "_model"):
-                        torch.save({
-                            'model_state_dict': self._model.state_dict(),
-                            'optimizer_state_dict': self._model.optimizer.state_dict()
-                        }, self._saving_filepath)
-                    else:
-                        self.logger.warning("Saving weights FAILED. No model to save.")
+
 
     def restore_weights(self):
         try:
